@@ -28,9 +28,54 @@ const interbitMiddleware = createInterbitMiddleware({
 
 const sagaMiddleware = createSagaMiddleware()
 
+let loggerMiddleware
+
+// Use redux logger in development
+if (process.env.NODE_ENV === 'development') {
+  const { createLogger } = require('redux-logger') // eslint-disable-line
+
+  // Seamless-Immutable logger cleanup
+  const stateTransformer = state => {
+    const shouldTransform = () =>
+      typeof state === 'object' && state !== null && Object.keys(state).length
+    if (shouldTransform()) {
+      const transformedState = Object.keys(state).reduce(
+        (transformedObj, stateKey) => {
+          if (state[stateKey].asMutable) {
+            return {
+              ...transformedObj,
+              [stateKey]: state[stateKey].asMutable({ deep: true })
+            }
+          }
+          return { ...transformedObj, [stateKey]: state[stateKey] }
+        },
+        {}
+      )
+      return transformedState
+    }
+    return state
+  }
+
+  // Create the logger
+  loggerMiddleware = createLogger({
+    stateTransformer,
+    collapsed: (getState, action) =>
+      action.type === 'interbit-middleware/CHAIN_UPDATED'
+    // Add this to hide CHAIN_UPDATED action in the console.
+    // predicate: (getState, action) =>
+    //   action.type !== 'interbit-middleware/CHAIN_UPDATED'
+  })
+}
+
 const store = createStore(
   reducers,
-  composeWithDevTools(applyMiddleware(interbitMiddleware, sagaMiddleware))
+  composeWithDevTools(
+    applyMiddleware(
+      loggerMiddleware && loggerMiddleware,
+      interbitMiddleware,
+      sagaMiddleware
+    )
+  )
 )
 sagaMiddleware.run(interbitSaga)
 
